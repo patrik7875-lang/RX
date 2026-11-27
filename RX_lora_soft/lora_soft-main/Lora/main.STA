@@ -1,0 +1,76 @@
+
+ROM used:   2558/32768 (8%)
+            2558/32768 (8%) including unused fragments
+
+            1.4 Average locations per line
+            8.3 Average locations per statement
+
+RAM used:   61/1536 (4%) at main() level
+            103/1536 (7%) worst case
+
+Stack used: 7 worst case (6 in main + 1 for interrupts)
+Stack size: 31
+
+Lines Stmts  %   Files
+----- ----- ---  -----
+  749   310 100  main.c
+ 1065     0   0  ..\..\..\..\..\..\..\..\Program Files (x86)\PICC\Devices\18F45K22.h
+----- -----
+ 1814   310 Total
+
+Page ROM  %  RAM    Vol Diff  Functions:
+---- --- --- ---    --- ----  ----------
+0     40   1    1             @delay_ms1
+0     16   0    3             @SPI_XFER_1_8
+0    204   4    0   1204  5.4  TIMER1_ISR
+0     30   1    0    181  1.8  StopAll
+0     34   1    0    181  1.8  StartMode30
+0     34   1    0    181  1.8  StartMode60
+0     34   1    0    181  1.8  StartInfiniteBlink
+0     28   1    0     92  1.3  resetDevice
+0     32   1    1    174  4.0  checkBusy
+0     24   0    1    121  1.8  SetStandby
+0     68   1    8    295  5.6  WriteCommand
+0     62   1    6    331  5.7  WriteBuffer
+0     70   1    7    383  5.6  ReadBuffer
+0     22   0    0     43  1.8  SetPacketType
+0    142   3   13             @DIV3232
+0    284   6   26    458  6.6  SetRfFrequency
+0     38   1    8    199  2.7  SetModulationParams
+0     44   1    9    333  4.0  SetPacketParams
+0     38   1    8    199  2.7  SetPaConfig
+0     30   1    8    145  3.0  SetTxParams
+0     34   1    9    209  3.0  setDIO3AsTCXOCtrl
+0     30   1    8    131  2.6  SetBufferBaseAddress
+0    100   2    3    539  3.5  SetupLoRa
+0     52   1   16    649  5.2  SetDioIrqParams
+0     60   1    4    310  3.9  GetIrqStatus
+0     28   1    4    188  4.1  ClearIrqStatus
+0     68   1    6    258  3.0  GetRxBufferStatus
+0     68   1    3    338  4.0  GetPacketRSSI
+0     74   1    3    348  2.8  StartRxContinuous
+0    172   3    9    928  5.8  SendAck
+0    428   8    7   1839  7.8  MAIN
+ Inline         0             @cinit1
+
+Program metrics:
+    Functions               28
+    Statements              310
+    Comments                228
+    Volume (V)              18808
+    Difficulty (D)          103.2
+    Effort to implement (E) 1941729
+    Time to implement (T)   29 hours, 58 minutes
+    Est Delivered Bugs (B)  5
+    Cyclomatic Complexity   23
+    Maintainability (MI)    50
+
+ Segment     Used  Free
+-----------  ----  ----
+00000-00002     4  0  
+00004-00006     0  4  
+00008-000AC   166  0  
+000AE-07FFE  2388  30206  
+
+
+

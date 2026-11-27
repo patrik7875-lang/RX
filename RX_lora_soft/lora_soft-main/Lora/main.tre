@@ -1,0 +1,138 @@
+ÀÄmain
+   ÃÄMAIN  0/428  Ram=7
+   ³  ÃÄ@cinit1  (Inline)  Ram=0
+   ³  ÃÄ@cinit2  (Inline)  Ram=0
+   ³  ÃÄSetupLoRa  0/100  Ram=3
+   ³  ³  ÃÄresetDevice  0/28  Ram=0
+   ³  ³  ³  ÃÄ@delay_ms1  0/40  Ram=1
+   ³  ³  ³  ÃÄ@delay_ms1  0/40  Ram=1
+   ³  ³  ³  ÀÄ@delay_ms1  0/40  Ram=1
+   ³  ³  ÃÄSetStandby  0/24  Ram=1
+   ³  ³  ³  ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³  ³  ÃÄ@delay_ms1  0/40  Ram=1
+   ³  ³  ³  ³  ÀÄresetDevice  0/28  Ram=0
+   ³  ³  ³  ³     ÀÄ*
+   ³  ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ³  ÀÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄsetDIO3AsTCXOCtrl  0/34  Ram=9
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³     ³  ÀÄ*
+   ³  ³  ³     ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ³     ÀÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@delay_ms1  0/40  Ram=1
+   ³  ³  ÃÄWriteCommand  0/68  Ram=8
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄWriteCommand  0/68  Ram=8
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄSetPacketType  0/22  Ram=0
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÀÄ*
+   ³  ³  ÃÄSetRfFrequency  0/284  Ram=26
+   ³  ³  ³  ÃÄ@DIV3232  0/142  Ram=13
+   ³  ³  ³  ÃÄ@DIV3232  0/142  Ram=13
+   ³  ³  ³  ÃÄ@DIV3232  0/142  Ram=13
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÀÄ*
+   ³  ³  ÃÄSetModulationParams  0/38  Ram=8
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÀÄ*
+   ³  ³  ÃÄSetPacketParams  0/44  Ram=9
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÀÄ*
+   ³  ³  ÃÄSetPaConfig  0/38  Ram=8
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÀÄ*
+   ³  ³  ÃÄSetTxParams  0/30  Ram=8
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÀÄ*
+   ³  ³  ÀÄSetBufferBaseAddress  0/30  Ram=8
+   ³  ³     ÀÄWriteCommand  0/68  Ram=8
+   ³  ³        ÀÄ*
+   ³  ÃÄStartRxContinuous  0/74  Ram=3
+   ³  ³  ÃÄSetStandby  0/24  Ram=1
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄClearIrqStatus  0/28  Ram=4
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÀÄ*
+   ³  ³  ÃÄSetDioIrqParams  0/52  Ram=16
+   ³  ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³  ³     ÀÄ*
+   ³  ³  ÀÄWriteCommand  0/68  Ram=8
+   ³  ³     ÀÄ*
+   ³  ÃÄGetIrqStatus  0/60  Ram=4
+   ³  ³  ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÀÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ÃÄClearIrqStatus  0/28  Ram=4
+   ³  ³  ÀÄ*
+   ³  ÃÄGetRxBufferStatus  0/68  Ram=6
+   ³  ³  ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÀÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ÃÄReadBuffer  0/70  Ram=7
+   ³  ³  ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÀÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ÃÄGetPacketRSSI  0/68  Ram=3
+   ³  ³  ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÀÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ÃÄStartMode30  0/34  Ram=0
+   ³  ÃÄSendAck  0/172  Ram=9
+   ³  ³  ÃÄ@delay_ms1  0/40  Ram=1
+   ³  ³  ÃÄSetStandby  0/24  Ram=1
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄSetPacketParams  0/44  Ram=9
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄClearIrqStatus  0/28  Ram=4
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄSetDioIrqParams  0/52  Ram=16
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄWriteBuffer  0/62  Ram=6
+   ³  ³  ³  ÃÄcheckBusy  0/32  Ram=1
+   ³  ³  ³  ³  ÀÄ*
+   ³  ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ³  ÃÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ³  ÀÄ@SPI_XFER_1_8  0/16  Ram=3
+   ³  ³  ÃÄWriteCommand  0/68  Ram=8
+   ³  ³  ³  ÀÄ*
+   ³  ³  ÃÄ@delay_ms1  0/40  Ram=1
+   ³  ³  ÀÄClearIrqStatus  0/28  Ram=4
+   ³  ³     ÀÄ*
+   ³  ÃÄStartRxContinuous  0/74  Ram=3
+   ³  ³  ÀÄ*
+   ³  ÃÄStartMode60  0/34  Ram=0
+   ³  ÃÄSendAck  0/172  Ram=9
+   ³  ³  ÀÄ*
+   ³  ÃÄStartRxContinuous  0/74  Ram=3
+   ³  ³  ÀÄ*
+   ³  ÃÄStartInfiniteBlink  0/34  Ram=0
+   ³  ÃÄStopAll  0/30  Ram=0
+   ³  ÃÄSendAck  0/172  Ram=9
+   ³  ³  ÀÄ*
+   ³  ÃÄStartRxContinuous  0/74  Ram=3
+   ³  ³  ÀÄ*
+   ³  ÃÄStopAll  0/30  Ram=0
+   ³  ÃÄSendAck  0/172  Ram=9
+   ³  ³  ÀÄ*
+   ³  ÀÄStartRxContinuous  0/74  Ram=3
+   ³     ÀÄ*
+   ÀÄTIMER1_ISR  0/204  Ram=0

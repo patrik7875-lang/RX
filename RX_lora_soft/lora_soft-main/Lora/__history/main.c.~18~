@@ -1,0 +1,103 @@
+#include <18F45K22.h>
+#use delay(internal=16MHz)
+
+// Аппаратный SPI1: PIN_C3 (SCK), PIN_C4 (SDI), PIN_C5 (SDO)
+#use spi(MASTER, SPI1, MODE=0, BITS=8, BAUD=1000000, STREAM=SPI_1)
+
+#define NSS_Pin   PIN_C1
+#define NRST_Pin  PIN_C2
+#define BUSY_Pin  PIN_C0
+#define LED1      PIN_A1
+#define LED2      PIN_A2
+
+// Аппаратный сброс
+void resetDevice(void)
+{
+   output_low(NRST_Pin);
+   delay_ms(5);
+   output_high(NRST_Pin);
+   delay_ms(25);
+}
+
+// Ожидание готовности с возвратом статуса (1 = ОК, 0 = завис BUSY)
+int1 waitBusy(void)
+{
+   unsigned int8 timeout = 0;
+   while(input(BUSY_Pin))
+   {
+      delay_ms(1);
+      if (++timeout > 50) return 0; // Ошибка: пин BUSY застрял в 1
+   }
+   return 1;
+}
+
+// Тест записи и чтения FIFO-буфера SX1268
+unsigned int8 TestSpiConnection(void)
+{
+   unsigned int8 read1 = 0, read2 = 0;
+
+   if (!waitBusy()) return 0; // Ошибка BUSY
+
+   // 1. Записываем 0xAA и 0x55 по адресу 0x00 (команда WriteBuffer = 0x0E)
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x0E);
+   spi_xfer(SPI_1, 0x00); // смещение 0
+   spi_xfer(SPI_1, 0xAA);
+   spi_xfer(SPI_1, 0x55);
+   output_high(NSS_Pin);
+
+   if (!waitBusy()) return 0;
+
+   // 2. Читаем обратно с адреса 0x00 (команда ReadBuffer = 0x1E)
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x1E);
+   spi_xfer(SPI_1, 0x00); // смещение 0
+   spi_xfer(SPI_1, 0x00); // NOP (обязательный холостой байт статуса для SX126x)
+   read1 = spi_xfer(SPI_1, 0x00);
+   read2 = spi_xfer(SPI_1, 0x00);
+   output_high(NSS_Pin);
+
+   // Проверяем результат
+   if (read1 == 0xAA && read2 == 0x55) return 2; // Идеально: связь 100%
+   if (read1 != 0x00 || read2 != 0x00) return 1; // Есть шум/искажения на линии
+   return 0;                                     // Тишина (модуль не отвечает)
+}
+
+void main(void)
+{
+   unsigned int8 status;
+
+   output_high(NSS_Pin);
+   output_high(NRST_Pin);
+   output_low(LED1);
+   output_low(LED2);
+
+   resetDevice();
+
+   while (TRUE)
+   {
+      status = TestSpiConnection();
+
+      if (status == 2) // СВЯЗЬ ОТЛИЧНАЯ: мигают оба светодиода
+      {
+         output_high(LED1);
+         output_high(LED2);
+      }
+      else if (status == 1) // ОШИБКА ДАННЫХ: мигает только LED1
+      {
+         output_high(LED1);
+         output_low(LED2);
+      }
+      else // НЕТ ОТВЕТА / ЗАВИС BUSY: мигает только LED2
+      {
+         output_low(LED1);
+         output_high(LED2);
+      }
+
+      delay_ms(166);
+      output_low(LED1);
+      output_low(LED2);
+      delay_ms(166);
+   }
+}
+

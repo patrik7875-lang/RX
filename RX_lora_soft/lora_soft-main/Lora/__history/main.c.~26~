@@ -1,0 +1,344 @@
+#include <18F45K22.h>
+#device PASS_STRINGS = IN_RAM
+
+// Тактирование PIC18F45K22 от внутреннего генератора 16 МГц
+#use delay(internal=16MHz)
+
+// Аппаратный SPI1: PIN_C3 (SCK), PIN_C4 (SDI), PIN_C5 (SDO)
+#use spi(MASTER, SPI1, MODE=0, BITS=8, BAUD=1000000, STREAM=SPI_1)
+
+// Пины управления модулем Ebyte E22-400M30S
+#define NSS_Pin   PIN_C1
+#define NRST_Pin  PIN_C2
+#define BUSY_Pin  PIN_C0
+#define DIO1_Pin  PIN_B0
+#define TXEN      PIN_E1
+#define RXEN      PIN_E2
+
+// Светодиоды и дополнительные пины
+#define LED1      PIN_A1
+#define LED2      PIN_A2
+#define CHANEL1   PIN_D5
+#define CHANEL2   PIN_D6
+#define S_lora    PIN_D4
+
+// Глобальные параметры LoRa для E22-400M30S
+unsigned int8  packettype      = 0x01;       // LoRa
+unsigned int32 frequency       = 433920000;  // Частота 433.92 МГц
+unsigned int8  spreadingFactor = 0x07;       // SF7
+unsigned int8  bandwidth       = 0x04;       // 125 кГц
+unsigned int8  codeRate        = 0x01;       // CR 4/5
+unsigned int8  optimisation    = 0x00;       // Оптимизация не требуется для SF7/125кГц
+unsigned int16 preambleLength  = 0x000C;     // 12 символов
+unsigned int8  headerType      = 0x00;       // Явный заголовок
+unsigned int8  payloadLength   = 5;          // Длина тестового пакета: 5 байт
+unsigned int8  crcType         = 0x01;       // CRC включен
+unsigned int8  invertIQ        = 0x00;       // Стандартный IQ
+
+// Щадящие настройки мощности для теста на столе (минимум для чипа SX1268)
+unsigned int8  paDutyCycle     = 0x01;       // Низкий рабочий цикл PA
+unsigned int8  hpMax           = 0x01;       // Минимальный режим усилителя
+unsigned int8  deviceSel       = 0x00;       // SX1268
+unsigned int8  paLut           = 0x01;
+signed int8    txpower         = 0;          // 0 дБм на выходе чипа (вместо +22 дБм)
+signed int8    rampTime        = 0x04;       // 200 мкс
+
+unsigned int8  txBaseAddress   = 0x00;
+unsigned int8  rxBaseAddress   = 0x00;
+unsigned int32 txtimeout       = 1000;       // Таймаут TX
+
+// Прототипы функций
+void resetDevice(void);
+void checkBusy(void);
+void SetStandby(unsigned int8 StdbyConfig);
+void WriteCommand(unsigned int8 command, unsigned int8 *buffer, unsigned int16 size);
+void WriteBuffer(unsigned int8 *data, unsigned int8 size, unsigned int8 offset);
+void SetPacketType(void);
+void SetRfFrequency(void);
+void SetModulationParams(void);
+void SetPacketParams(void);
+void SetPaConfig(void);
+void SetTxParams(void);
+void setDIO3AsTCXOCtrl(unsigned int8 tcxoVoltage);
+void setDIO2AsRfSwitchCtrl(unsigned int8 enable);
+void SetBufferBaseAddress(void);
+void SetupLoRa(void);
+void SetDioIrqParams(unsigned int16 irqMask, unsigned int16 dio1Mask, unsigned int16 dio2Mask, unsigned int16 dio3Mask);
+void SetTx(void);
+void ClearIrqStatus(unsigned int16 irqMask);
+void Transmit(void);
+
+// Аппаратный сброс трансивера
+void resetDevice(void)
+{
+   delay_ms(10);
+   output_low(NRST_Pin);
+   delay_ms(5);
+   output_high(NRST_Pin);
+   delay_ms(25);
+}
+
+// Ожидание готовности чипа по пину BUSY
+void checkBusy(void)
+{
+   unsigned int8 busy_timeout_cnt = 0;
+   while(input(BUSY_Pin))
+   {
+      delay_ms(1);
+      busy_timeout_cnt++;
+      if (busy_timeout_cnt > 20)
+      {
+         busy_timeout_cnt = 0;
+         resetDevice();
+         break;
+      }
+   }
+}
+
+void SetStandby(unsigned int8 StdbyConfig)
+{
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x80);
+   spi_xfer(SPI_1, StdbyConfig);
+   output_high(NSS_Pin);
+}
+
+void WriteCommand(unsigned int8 command, unsigned int8 *buffer, unsigned int16 size)
+{
+   unsigned int16 index;
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, command);
+   for (index = 0; index < size; index++)
+   {
+      spi_xfer(SPI_1, buffer[index]);
+   }
+   output_high(NSS_Pin);
+}
+// Запись данных пакета в FIFO буфер трансивера
+void WriteBuffer(unsigned int8 *data, unsigned int8 size, unsigned int8 offset)
+{
+   unsigned int8 index;
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x0E);
+   spi_xfer(SPI_1, offset);
+   for (index = 0; index < size; index++)
+   {
+      spi_xfer(SPI_1, data[index]);
+   }
+   output_high(NSS_Pin);
+}
+
+void SetPacketType(void)
+{
+   WriteCommand(0x8A, &packettype, 1);
+}
+
+void SetRfFrequency(void)
+{
+   unsigned int8 buffer[4];
+   unsigned int32 freq;
+   freq = (unsigned int32)(frequency / 0.95367431640625);
+   buffer[0] = (unsigned int8)(freq >> 24);
+   buffer[1] = (unsigned int8)(freq >> 16);
+   buffer[2] = (unsigned int8)(freq >> 8);
+   buffer[3] = (unsigned int8)(freq);
+   WriteCommand(0x86, buffer, 4);
+}
+
+void SetModulationParams(void)
+{
+   unsigned int8 buffer[4];
+   buffer[0] = spreadingFactor;
+   buffer[1] = bandwidth;
+   buffer[2] = codeRate;
+   buffer[3] = optimisation;
+   WriteCommand(0x8B, buffer, 4);
+}
+
+void SetPacketParams(void)
+{
+   unsigned int8 preambleMSB, preambleLSB;
+   preambleMSB = (unsigned int8)(preambleLength >> 8);
+   preambleLSB = (unsigned int8)(preambleLength);
+   unsigned int8 buffer[9];
+   buffer[0] = preambleMSB;
+   buffer[1] = preambleLSB;
+   buffer[2] = headerType;
+   buffer[3] = payloadLength;
+   buffer[4] = crcType;
+   buffer[5] = invertIQ;
+   buffer[6] = 0xFF;
+   buffer[7] = 0xFF;
+   buffer[8] = 0xFF;
+   WriteCommand(0x8C, buffer, 9);
+}
+
+void SetPaConfig(void)
+{
+   unsigned int8 buffer[4];
+   buffer[0] = paDutyCycle;
+   buffer[1] = hpMax;
+   buffer[2] = deviceSel;
+   buffer[3] = paLut;
+   WriteCommand(0x95, buffer, 4);
+}
+
+void SetTxParams(void)
+{
+   unsigned int8 buffer[2];
+   buffer[0] = (unsigned int8)txpower;
+   buffer[1] = rampTime;
+   WriteCommand(0x8E, buffer, 2);
+}
+
+void setDIO3AsTCXOCtrl(unsigned int8 tcxoVoltage)
+{
+   if (tcxoVoltage != 0xFF)
+   {
+      unsigned int8 buffer[4];
+      buffer[0] = tcxoVoltage;
+      buffer[1] = 0x00;
+      buffer[2] = 0x00;
+      buffer[3] = 0x64;
+      WriteCommand(0x97, buffer, 4);
+   }
+}
+
+void setDIO2AsRfSwitchCtrl(unsigned int8 enable)
+{
+   unsigned int8 buffer;
+   buffer = enable; 
+   WriteCommand(0x9D, &buffer, 1);
+}
+
+void SetBufferBaseAddress(void)
+{
+   unsigned int8 buffer[2];
+   buffer[0] = txBaseAddress;
+   buffer[1] = rxBaseAddress;
+   WriteCommand(0x8F, buffer, 2);
+}
+
+// Комплексная инициализация LoRa радиомодуля
+void SetupLoRa(void)
+{
+   SetStandby(0x00);
+   SetPacketType();
+   SetRfFrequency();
+   SetModulationParams();
+   SetPacketParams();
+   SetPaConfig();
+   SetTxParams();
+   setDIO3AsTCXOCtrl(0x07);     // Питание TCXO 3.3V (стандарт для E22)
+   SetBufferBaseAddress();
+   setDIO2AsRfSwitchCtrl(0x01); // Включение автоуправления внутренним ключом DIO2
+}
+
+void SetDioIrqParams(unsigned int16 irqMask, unsigned int16 dio1Mask, unsigned int16 dio2Mask, unsigned int16 dio3Mask)
+{
+   unsigned int8 buffer[8];
+   buffer[0] = (unsigned int8)(irqMask >> 8);
+   buffer[1] = (unsigned int8)(irqMask);
+   buffer[2] = (unsigned int8)(dio1Mask >> 8);
+   buffer[3] = (unsigned int8)(dio1Mask);
+   buffer[4] = (unsigned int8)(dio2Mask >> 8);
+   buffer[5] = (unsigned int8)(dio2Mask);
+   buffer[6] = (unsigned int8)(dio3Mask >> 8);
+   buffer[7] = (unsigned int8)(dio3Mask);
+   WriteCommand(0x08, buffer, 8);
+}
+
+void SetTx(void)
+{
+   unsigned int8 buffer[3];
+   unsigned int32 timeout_calc = txtimeout << 6;
+   buffer[0] = (unsigned int8)(timeout_calc >> 16);
+   buffer[1] = (unsigned int8)(timeout_calc >> 8);
+   buffer[2] = (unsigned int8)(timeout_calc);
+   WriteCommand(0x83, buffer, 3);
+}
+
+void ClearIrqStatus(unsigned int16 irqMask)
+{
+   unsigned int8 buffer[2];
+   buffer[0] = (unsigned int8)(irqMask >> 8);
+   buffer[1] = (unsigned int8)(irqMask);
+   WriteCommand(0x12, buffer, 2);
+}
+
+// Процедура отправки сформированного пакета в эфир с управлением TXEN/RXEN
+void Transmit(void)
+{
+   unsigned int16 tx_wait_cnt = 0;
+
+   // Включаем тракт передачи на модуле E22-400M30S
+   output_low(RXEN);
+   output_high(TXEN);
+   delay_us(100); // Короткая пауза на переключение ВЧ-ключа
+
+   SetDioIrqParams(0x0201, 0x0201, 0x0000, 0x0000); // Прерывания TxDone и Timeout на DIO1
+   SetTx();
+
+   // Ожидание окончания передачи по DIO1 с защитой от зависания (таймаут ~500 мс)
+   while (!input(DIO1_Pin))
+   {
+      delay_ms(1);
+      tx_wait_cnt++;
+      if (tx_wait_cnt > 500)
+      {
+         break;
+      }
+   }
+
+   ClearIrqStatus(0xFFFF);
+
+   // Переводим ВЧ-тракт в безопасное состояние (выключен)
+   output_low(TXEN);
+   output_low(RXEN);
+}
+
+void main(void)
+{
+   unsigned int8 blink_cnt;
+   // Тестовый массив из 5 байт (последний байт будем менять как счетчик пакетов)
+   unsigned int8 txbuffer[5] = {0x11, 0x22, 0x33, 0x44, 0x00};
+
+   // Начальная установка логических уровней
+   output_high(NSS_Pin);
+   output_high(NRST_Pin);
+   output_low(TXEN);
+   output_low(RXEN);
+   output_low(LED1);
+   output_low(LED2);
+
+   // Обязательный аппаратный сброс перед настройкой SX1268
+   resetDevice();
+
+   // Старт конфигурации LoRa
+   SetupLoRa();
+
+   while (TRUE)
+   {
+      // Моргаем LED1 и LED2 3 раза в секунду (3 цикла по ~332 мс = ~1 секунда)
+      for (blink_cnt = 0; blink_cnt < 3; blink_cnt++)
+      {
+         output_high(LED1);
+         output_high(LED2);
+         delay_ms(166);
+
+         output_low(LED1);
+         output_low(LED2);
+         delay_ms(166);
+      
+
+      // Раз в секунду отправляем 5 тестовых байт
+      txbuffer[4]++; // Инкрементируем 5-й байт, чтобы на приемнике было видно обновление пакетов
+      WriteBuffer(txbuffer, 5, 0x00);
+      Transmit();
+      }
+   }
+}
+

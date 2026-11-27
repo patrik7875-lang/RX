@@ -1,0 +1,744 @@
+
+#include <18F45K22.h>
+#fuses INTRC_IO, NOWDT, NOPROTECT, NOLVP, PUT, BROWNOUT
+#device PASS_STRINGS = IN_RAM
+
+#use delay(internal=16MHz)
+
+#use spi(MASTER, SPI1, MODE=0, BITS=8, BAUD=1000000, STREAM=SPI_1)
+
+// ==================== ПИНЫ ====================
+
+#define NSS_Pin      PIN_C1
+#define NRST_Pin     PIN_C2
+#define BUSY_Pin     PIN_C0
+#define DIO1_Pin     PIN_B0
+
+#define TXEN         PIN_E1
+#define RXEN         PIN_E2
+
+#define LED1         PIN_A1
+#define LED2         PIN_A2
+
+#define CHANNEL_1    PIN_D5
+
+// ==================== ПАРАМЕТРЫ LORA ====================
+
+#define RECEIVER_ID  1
+#define PACKET_LEN   2
+#define ACK_BYTE     0xAA
+#define BUF_MAX      8
+
+#define MODE_IDLE    0
+#define MODE_30      1
+#define MODE_60      2
+#define MODE_CONT    3
+
+unsigned int8 packettype = 0x01;
+unsigned int32 frequency = 434500000;
+
+unsigned int8 spreadingFactor = 0x0A;
+unsigned int8 bandwidth = 0x04;
+unsigned int8 codeRate = 0x01;
+unsigned int8 optimisation = 0x00;
+
+unsigned int16 preambleLength = 0x000C;
+unsigned int8 headerType = 0x00;
+unsigned int8 crcType = 0x01;
+unsigned int8 invertIQ = 0x00;
+
+unsigned int8 paDutyCycle = 0x02;
+unsigned int8 hpMax = 0x03;
+unsigned int8 deviceSel = 0x00;
+unsigned int8 paLut = 0x01;
+
+signed int8 txpower = 17;
+unsigned int8 rampTime = 0x04;
+
+unsigned int8 txBaseAddress = 0x00;
+unsigned int8 rxBaseAddress = 0x00;
+
+// ==================== ПЕРЕМЕННЫЕ ТАЙМЕРА ====================
+
+volatile unsigned int8 work_mode = MODE_IDLE;
+volatile unsigned int8 timer_div = 0;
+volatile unsigned int16 blink_count = 0;
+volatile unsigned int16 blink_target = 0;
+volatile int1 blink_state = 0;
+volatile int1 alternate_state = 0;
+
+// ==================== ПРОТОТИПЫ ====================
+
+void resetDevice(void);
+void checkBusy(void);
+void SetStandby(unsigned int8 StdbyConfig);
+
+void WriteCommand(unsigned int8 command,
+                  unsigned int8 *buffer,
+                  unsigned int16 size);
+
+void WriteBuffer(unsigned int8 *data,
+                 unsigned int8 size,
+                 unsigned int8 offset);
+
+void ReadBuffer(unsigned int8 offset,
+                unsigned int8 *data,
+                unsigned int8 size);
+
+void SetPacketType(void);
+void SetRfFrequency(void);
+void SetModulationParams(void);
+void SetPacketParams(unsigned int8 len);
+void SetPaConfig(void);
+void SetTxParams(void);
+void setDIO3AsTCXOCtrl(unsigned int8 tcxoVoltage);
+void SetBufferBaseAddress(void);
+void SetupLoRa(void);
+
+void SetDioIrqParams(unsigned int16 irqMask,
+                     unsigned int16 dio1Mask,
+                     unsigned int16 dio2Mask,
+                     unsigned int16 dio3Mask);
+
+unsigned int16 GetIrqStatus(void);
+void ClearIrqStatus(unsigned int16 irqMask);
+
+void GetRxBufferStatus(unsigned int8 *payloadLen,
+                       unsigned int8 *rxStartBufferPtr);
+
+void StartRxContinuous(void);
+void SendAck(void);
+
+void StartTimedMode(unsigned int16 count);
+void StartContinuousMode(void);
+void StopAllModes(void);
+
+// ==================== АППАРАТНЫЙ TIMER1 ====================
+
+// Частота PIC = 16 МГц
+// Fosc/4 = 4 МГц
+// Предделитель 1:8
+// Timer1 переполняется каждые 100 мс
+
+#int_TIMER1
+void TIMER1_ISR(void)
+{
+   set_timer1(15536);
+
+   timer_div++;
+
+   if (timer_div < 5)
+      return;
+
+   timer_div = 0;
+
+   // РЕЖИМ 30 ИЛИ 60 СЕКУНД
+
+   if (work_mode == MODE_30 || work_mode == MODE_60)
+   {
+      if (blink_state == 0)
+      {
+         blink_state = 1;
+
+         if (work_mode == MODE_30)
+            output_high(LED1);
+         else
+            output_high(LED2);
+      }
+      else
+      {
+         blink_state = 0;
+
+         if (work_mode == MODE_30)
+            output_low(LED1);
+         else
+            output_low(LED2);
+
+         blink_count++;
+
+         if (blink_count >= blink_target)
+         {
+            work_mode = MODE_IDLE;
+
+            output_low(LED1);
+            output_low(LED2);
+            output_low(CHANNEL_1);
+         }
+      }
+   }
+
+   // БЕСКОНЕЧНОЕ ПОПЕРЕМЕННОЕ МИГАНИЕ
+
+   else if (work_mode == MODE_CONT)
+   {
+      alternate_state = !alternate_state;
+
+      if (alternate_state)
+      {
+         output_high(LED1);
+         output_low(LED2);
+      }
+      else
+      {
+         output_low(LED1);
+         output_high(LED2);
+      }
+   }
+}
+
+// ==================== УПРАВЛЕНИЕ РЕЖИМАМИ ====================
+
+void StopAllModes(void)
+{
+   disable_interrupts(INT_TIMER1);
+
+   work_mode = MODE_IDLE;
+   timer_div = 0;
+   blink_count = 0;
+   blink_target = 0;
+   blink_state = 0;
+   alternate_state = 0;
+
+   output_low(LED1);
+   output_low(LED2);
+   output_low(CHANNEL_1);
+
+   enable_interrupts(INT_TIMER1);
+}
+
+void StartTimedMode(unsigned int16 count)
+{
+   disable_interrupts(INT_TIMER1);
+
+   work_mode = MODE_IDLE;
+
+   timer_div = 0;
+   blink_count = 0;
+   blink_target = count;
+   blink_state = 1;
+
+   output_low(LED1);
+   output_low(LED2);
+
+   output_high(CHANNEL_1);
+
+   if (count == 30)
+   {
+      work_mode = MODE_30;
+      output_high(LED1);
+   }
+   else
+   {
+      work_mode = MODE_60;
+      output_high(LED2);
+   }
+
+   enable_interrupts(INT_TIMER1);
+}
+
+void StartContinuousMode(void)
+{
+   disable_interrupts(INT_TIMER1);
+
+   work_mode = MODE_CONT;
+
+   timer_div = 0;
+   blink_count = 0;
+   blink_state = 0;
+   alternate_state = 0;
+
+   output_high(CHANNEL_1);
+
+   output_high(LED1);
+   output_low(LED2);
+
+   enable_interrupts(INT_TIMER1);
+}
+
+// ==================== СБРОС SX1268 ====================
+
+void resetDevice(void)
+{
+   delay_ms(10);
+
+   output_low(NRST_Pin);
+   delay_ms(5);
+
+   output_high(NRST_Pin);
+   delay_ms(25);
+}
+
+void checkBusy(void)
+{
+   unsigned int8 busy_timeout_cnt = 0;
+
+   while (input(BUSY_Pin))
+   {
+      delay_ms(1);
+      busy_timeout_cnt++;
+
+      if (busy_timeout_cnt > 20)
+      {
+         busy_timeout_cnt = 0;
+         resetDevice();
+         break;
+      }
+   }
+}
+
+// ==================== SPI КОМАНДЫ ====================
+
+void SetStandby(unsigned int8 StdbyConfig)
+{
+   checkBusy();
+
+   output_low(NSS_Pin);
+
+   spi_xfer(SPI_1, 0x80);
+   spi_xfer(SPI_1, StdbyConfig);
+
+   output_high(NSS_Pin);
+}
+
+void WriteCommand(unsigned int8 command,
+                  unsigned int8 *buffer,
+                  unsigned int16 size)
+{
+   unsigned int16 index;
+
+   checkBusy();
+
+   output_low(NSS_Pin);
+
+   spi_xfer(SPI_1, command);
+
+   for (index = 0; index < size; index++)
+      spi_xfer(SPI_1, *(buffer + index));
+
+   output_high(NSS_Pin);
+}
+
+void WriteBuffer(unsigned int8 *data,
+                 unsigned int8 size,
+                 unsigned int8 offset)
+{
+   unsigned int8 index;
+
+   checkBusy();
+
+   output_low(NSS_Pin);
+
+   spi_xfer(SPI_1, 0x0E);
+   spi_xfer(SPI_1, offset);
+
+   for (index = 0; index < size; index++)
+      spi_xfer(SPI_1, *(data + index));
+
+   output_high(NSS_Pin);
+}
+
+void ReadBuffer(unsigned int8 offset,
+                unsigned int8 *data,
+                unsigned int8 size)
+{
+   unsigned int8 index;
+
+   checkBusy();
+
+   output_low(NSS_Pin);
+
+   spi_xfer(SPI_1, 0x1E);
+   spi_xfer(SPI_1, offset);
+   spi_xfer(SPI_1, 0x00);
+
+   for (index = 0; index < size; index++)
+      *(data + index) = spi_xfer(SPI_1, 0x00);
+
+   output_high(NSS_Pin);
+}
+
+// ==================== НАСТРОЙКА LORA ====================
+
+void SetPacketType(void)
+{
+   WriteCommand(0x8A, &packettype, 1);
+}
+
+void SetRfFrequency(void)
+{
+   unsigned int8 buffer[BUF_MAX];
+
+   unsigned int32 freq =
+      (frequency / 15625UL) * 16384UL +
+      ((frequency % 15625UL) * 16384UL) / 15625UL;
+
+   buffer[0] = (unsigned int8)(freq >> 24);
+   buffer[1] = (unsigned int8)(freq >> 16);
+   buffer[2] = (unsigned int8)(freq >> 8);
+   buffer[3] = (unsigned int8)freq;
+
+   WriteCommand(0x86, buffer, 4);
+}
+
+void SetModulationParams(void)
+{
+   unsigned int8 buffer[BUF_MAX];
+
+   buffer[0] = spreadingFactor;
+   buffer[1] = bandwidth;
+   buffer[2] = codeRate;
+   buffer[3] = optimisation;
+
+   WriteCommand(0x8B, buffer, 4);
+}
+
+void SetPacketParams(unsigned int8 len)
+{
+   unsigned int8 buffer[BUF_MAX];
+
+   buffer[0] = (unsigned int8)(preambleLength >> 8);
+   buffer[1] = (unsigned int8)preambleLength;
+   buffer[2] = headerType;
+   buffer[3] = len;
+   buffer[4] = crcType;
+   buffer[5] = invertIQ;
+
+   WriteCommand(0x8C, buffer, 6);
+}
+
+void SetPaConfig(void)
+{
+   unsigned int8 buffer[BUF_MAX];
+
+   buffer[0] = paDutyCycle;
+   buffer[1] = hpMax;
+   buffer[2] = deviceSel;
+   buffer[3] = paLut;
+
+   WriteCommand(0x95, buffer, 4);
+}
+
+void SetTxParams(void)
+{
+   unsigned int8 buffer[BUF_MAX];
+
+   buffer[0] = (unsigned int8)txpower;
+   buffer[1] = rampTime;
+
+   WriteCommand(0x8E, buffer, 2);
+}
+
+void setDIO3AsTCXOCtrl(unsigned int8 tcxoVoltage)
+{
+   unsigned int8 buffer[BUF_MAX];
+
+   buffer[0] = tcxoVoltage;
+   buffer[1] = 0x00;
+   buffer[2] = 0x00;
+   buffer[3] = 0x64;
+
+   WriteCommand(0x97, buffer, 4);
+}
+
+void SetBufferBaseAddress(void)
+{
+   unsigned int8 buffer[BUF_MAX];
+
+   buffer[0] = txBaseAddress;
+   buffer[1] = rxBaseAddress;
+
+   WriteCommand(0x8F, buffer, 2);
+}
+
+// ==================== ИНИЦИАЛИЗАЦИЯ ====================
+
+void SetupLoRa(void)
+{
+   unsigned int8 cal_param = 0x7F;
+   unsigned int8 img_freq[2];
+
+   img_freq[0] = 0x6B;
+   img_freq[1] = 0x6F;
+
+   output_low(TXEN);
+   output_low(RXEN);
+
+   resetDevice();
+
+   SetStandby(0x00);
+
+   setDIO3AsTCXOCtrl(0x03);
+   delay_ms(10);
+
+   WriteCommand(0x89, &cal_param, 1);
+   checkBusy();
+
+   WriteCommand(0x98, img_freq, 2);
+   checkBusy();
+
+   SetPacketType();
+   SetRfFrequency();
+   SetModulationParams();
+   SetPacketParams(PACKET_LEN);
+   SetPaConfig();
+   SetTxParams();
+   SetBufferBaseAddress();
+}
+
+// ==================== ПРЕРЫВАНИЯ LORA ====================
+
+void SetDioIrqParams(unsigned int16 irqMask,
+                     unsigned int16 dio1Mask,
+                     unsigned int16 dio2Mask,
+                     unsigned int16 dio3Mask)
+{
+   unsigned int8 buffer[BUF_MAX];
+
+   buffer[0] = (unsigned int8)(irqMask >> 8);
+   buffer[1] = (unsigned int8)irqMask;
+
+   buffer[2] = (unsigned int8)(dio1Mask >> 8);
+   buffer[3] = (unsigned int8)dio1Mask;
+
+   buffer[4] = (unsigned int8)(dio2Mask >> 8);
+   buffer[5] = (unsigned int8)dio2Mask;
+
+   buffer[6] = (unsigned int8)(dio3Mask >> 8);
+   buffer[7] = (unsigned int8)dio3Mask;
+
+   WriteCommand(0x08, buffer, 8);
+}
+
+unsigned int16 GetIrqStatus(void)
+{
+   unsigned int8 msb, lsb;
+
+   checkBusy();
+
+   output_low(NSS_Pin);
+
+   spi_xfer(SPI_1, 0x12);
+   spi_xfer(SPI_1, 0x00);
+
+   msb = spi_xfer(SPI_1, 0x00);
+   lsb = spi_xfer(SPI_1, 0x00);
+
+   output_high(NSS_Pin);
+
+   return ((unsigned int16)msb << 8) | lsb;
+}
+
+void ClearIrqStatus(unsigned int16 irqMask)
+{
+   unsigned int8 buffer[2];
+
+   buffer[0] = (unsigned int8)(irqMask >> 8);
+   buffer[1] = (unsigned int8)irqMask;
+
+   WriteCommand(0x02, buffer, 2);
+}
+
+void GetRxBufferStatus(unsigned int8 *payloadLen,
+                       unsigned int8 *rxStartBufferPtr)
+{
+   checkBusy();
+
+   output_low(NSS_Pin);
+
+   spi_xfer(SPI_1, 0x13);
+   spi_xfer(SPI_1, 0x00);
+
+   *payloadLen = spi_xfer(SPI_1, 0x00);
+   *rxStartBufferPtr = spi_xfer(SPI_1, 0x00);
+
+   output_high(NSS_Pin);
+}
+
+// ==================== НЕПРЕРЫВНЫЙ ПРИЁМ ====================
+
+void StartRxContinuous(void)
+{
+   unsigned int8 rx_timeout[3];
+
+   rx_timeout[0] = 0xFF;
+   rx_timeout[1] = 0xFF;
+   rx_timeout[2] = 0xFF;
+
+   SetStandby(0x00);
+
+   ClearIrqStatus(0xFFFF);
+
+   SetDioIrqParams(0x0062, 0x0002, 0x0000, 0x0000);
+
+   output_low(TXEN);
+   output_high(RXEN);
+
+   delay_us(100);
+
+   WriteCommand(0x82, rx_timeout, 3);
+}
+
+// ==================== ОТПРАВКА ACK ====================
+
+void SendAck(void)
+{
+   unsigned int8 ack_packet[PACKET_LEN];
+   unsigned int8 tx_cmd[3];
+
+   unsigned int16 wait_cnt = 0;
+
+   ack_packet[0] = RECEIVER_ID;
+   ack_packet[1] = ACK_BYTE;
+
+   tx_cmd[0] = 0x01;
+   tx_cmd[1] = 0xF4;
+   tx_cmd[2] = 0x00;
+
+   delay_ms(5);
+
+   SetStandby(0x00);
+   SetPacketParams(PACKET_LEN);
+
+   ClearIrqStatus(0xFFFF);
+
+   SetDioIrqParams(0x0201, 0x0201, 0x0000, 0x0000);
+
+   WriteBuffer(ack_packet, PACKET_LEN, 0x00);
+
+   output_low(RXEN);
+   output_high(TXEN);
+
+   delay_us(100);
+
+   WriteCommand(0x83, tx_cmd, 3);
+
+   while (!input(DIO1_Pin) && wait_cnt < 1000)
+   {
+      delay_ms(1);
+      wait_cnt++;
+   }
+
+   output_low(TXEN);
+   output_low(RXEN);
+
+   ClearIrqStatus(0xFFFF);
+}
+
+// ==================== ГЛАВНАЯ ПРОГРАММА ====================
+
+void main(void)
+{
+   unsigned int8 rxbuffer[PACKET_LEN];
+   unsigned int8 rx_len = 0;
+   unsigned int8 rx_offset = 0;
+
+   unsigned int8 received_value = 0;
+
+   unsigned int16 irq_status = 0;
+
+   setup_adc_ports(NO_ANALOGS);
+
+   // Настройка направлений портов
+
+   set_tris_a(0b11111001);
+   set_tris_b(0b00000001);
+   set_tris_c(0b00010001);
+   set_tris_d(0b11011111);
+   set_tris_e(0b11111001);
+
+   output_high(NSS_Pin);
+   output_high(NRST_Pin);
+
+   output_low(TXEN);
+   output_low(RXEN);
+
+   output_low(LED1);
+   output_low(LED2);
+   output_low(CHANNEL_1);
+
+   // Инициализация Timer1
+
+   setup_timer_1(T1_INTERNAL | T1_DIV_BY_8);
+   set_timer1(15536);
+
+   enable_interrupts(INT_TIMER1);
+   enable_interrupts(GLOBAL);
+
+   // Инициализация радиомодуля
+
+   SetupLoRa();
+
+   StartRxContinuous();
+
+   while (TRUE)
+   {
+      if (input(DIO1_Pin))
+      {
+         irq_status = GetIrqStatus();
+
+         ClearIrqStatus(0xFFFF);
+
+         if ((irq_status & 0x0002) &&
+             !(irq_status & 0x0060))
+         {
+            GetRxBufferStatus(&rx_len, &rx_offset);
+
+            if (rx_len >= PACKET_LEN)
+            {
+               ReadBuffer(rx_offset, rxbuffer, PACKET_LEN);
+
+               if (rxbuffer[0] == RECEIVER_ID)
+               {
+                  received_value = rxbuffer[1];
+
+                  // Команда 30 секунд
+                  if (received_value == 30)
+                  {
+                     SendAck();
+                     StartTimedMode(30);
+                  }
+
+                  // Команда 60 секунд
+                  else if (received_value == 60)
+                  {
+                     SendAck();
+                     StartTimedMode(60);
+                  }
+
+                  // Кнопка 3:
+                  // Включение / выключение бесконечного режима
+
+                  else if (received_value == 1)
+                  {
+                     SendAck();
+
+                     if (work_mode == MODE_CONT)
+                     {
+                        StopAllModes();
+                     }
+                     else
+                     {
+                        StartContinuousMode();
+                     }
+                  }
+
+                  // Кнопка 4:
+                  // Полное выключение
+
+                  else if (received_value == 0)
+                  {
+                     SendAck();
+                     StopAllModes();
+                  }
+               }
+            }
+         }
+
+         // Возвращаем радиомодуль в режим приёма
+
+         StartRxContinuous();
+      }
+   }
+}
+
+

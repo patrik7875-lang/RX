@@ -1,0 +1,225 @@
+000     @SCRATCH
+001     @SCRATCH
+001     _RETURN_
+002     @SCRATCH
+003     @SCRATCH
+004     @INTERRUPT_AREA
+005     @INTERRUPT_AREA
+006     @INTERRUPT_AREA
+007     @INTERRUPT_AREA
+008     @INTERRUPT_AREA
+009     @INTERRUPT_AREA
+00A     @INTERRUPT_AREA
+00B     @INTERRUPT_AREA
+00C     @INTERRUPT_AREA
+00D     @INTERRUPT_AREA
+00E     @INTERRUPT_AREA
+00F     @INTERRUPT_AREA
+010     @INTERRUPT_AREA
+011     @INTERRUPT_AREA
+012     @INTERRUPT_AREA
+013     @INTERRUPT_AREA
+014     @INTERRUPT_AREA
+015     @INTERRUPT_AREA
+016     @INTERRUPT_AREA
+017     @INTERRUPT_AREA
+018     @INTERRUPT_AREA
+019     packettype
+01A-01D frequency
+01E     spreadingFactor
+01F     bandwidth
+020     codeRate
+021     optimisation
+022-023 preambleLength
+024     headerType
+025     crcType
+026     invertIQ
+027     paDutyCycle
+028     hpMax
+029     deviceSel
+02A     paLut
+02B     txpower
+02C     rampTime
+02D     txBaseAddress
+02E     rxBaseAddress
+02F     current_mode
+030     blink_phase
+031-032 blink_count
+033-034 timer_ms
+035     received_rssi
+036-037 MAIN.rxbuffer
+038     MAIN.rx_len
+039     MAIN.rx_offset
+03A     MAIN.received_value
+03B-03C MAIN.irq_status
+03D     SendAck.rssi
+03D-03F StartRxContinuous.rx_timeout
+03D     ReadBuffer.offset
+03D-03E GetRxBufferStatus.payloadLen
+03D     SetupLoRa.cal_param
+03D     GetIrqStatus.msb
+03D     GetPacketRSSI.rssi_raw
+03E-03F SetupLoRa.img_freq
+03E-040 SendAck.ack_packet
+03E-03F ReadBuffer.data
+03E     GetIrqStatus.lsb
+03E     GetPacketRSSI.@SCRATCH1
+03F-040 GetRxBufferStatus.rxStartBufferPtr
+03F     GetIrqStatus.@SCRATCH1
+03F     GetPacketRSSI.@SCRATCH2
+040     setDIO3AsTCXOCtrl.tcxoVoltage
+040-047 SetTxParams.buffer
+040-047 SetModulationParams.buffer
+040-047 SetBufferBaseAddress.buffer
+040-047 SetRfFrequency.buffer
+040-047 SetPaConfig.buffer
+040     ReadBuffer.size
+040     GetIrqStatus.@SCRATCH2
+041-043 SendAck.tx_cmd
+041-048 setDIO3AsTCXOCtrl.buffer
+041     ReadBuffer.index
+041     GetRxBufferStatus.@SCRATCH1
+042     ReadBuffer.@SCRATCH1
+042     GetRxBufferStatus.@SCRATCH2
+043     ReadBuffer.@SCRATCH2
+044-045 SendAck.wait_cnt
+046-047 SetDioIrqParams.irqMask
+046     SetStandby.StdbyConfig
+046-047 WriteBuffer.data
+046-047 ClearIrqStatus.irqMask
+046     SetPacketParams.len
+047-04E SetPacketParams.buffer
+048-049 SetDioIrqParams.dio1Mask
+048-04B SetRfFrequency.freq
+048-049 ClearIrqStatus.buffer
+048     WriteBuffer.size
+049     WriteBuffer.offset
+04A     WriteBuffer.index
+04A-04B SetDioIrqParams.dio2Mask
+04B     WriteBuffer.@SCRATCH1
+04C-04D SetDioIrqParams.dio3Mask
+04C     SetRfFrequency.@SCRATCH1
+04D     SetRfFrequency.@SCRATCH2
+04E-055 SetDioIrqParams.buffer
+04E     SetRfFrequency.@SCRATCH3
+04F     SetRfFrequency.@SCRATCH4
+050     SetRfFrequency.@SCRATCH5
+051     SetRfFrequency.@SCRATCH6
+052     SetRfFrequency.@SCRATCH7
+053     SetRfFrequency.@SCRATCH8
+054     SetRfFrequency.@SCRATCH9
+055     SetRfFrequency.@SCRATCH10
+056     WriteCommand.command
+056     SetRfFrequency.@SCRATCH11
+057-058 WriteCommand.buffer
+057     SetRfFrequency.@SCRATCH12
+058     SetRfFrequency.@SCRATCH13
+059-05A WriteCommand.size
+059     SetRfFrequency.@SCRATCH14
+05A-05D @DIV3232.P1
+05B-05C WriteCommand.index
+05D     checkBusy.busy_timeout_cnt
+05D     WriteCommand.@SCRATCH1
+05E-061 @DIV3232.P1
+05E     @SPI_XFER_1_8.P2
+05E     @delay_ms1.P3
+062     @DIV3232.@SCRATCH1
+063     @DIV3232.@SCRATCH2
+064     @DIV3232.@SCRATCH3
+065     @DIV3232.@SCRATCH4
+066     @DIV3232.@SCRATCH5
+F55     CCP_5_LOW
+F55     CCP_5
+F56     CCP_5_HIGH
+F58     CCP_4_LOW
+F58     CCP_4
+F59     CCP_4_HIGH
+F5E     CCP_3_LOW
+F5E     CCP_3
+F5F     CCP_3_HIGH
+F67     CCP_2
+F67     CCP_2_LOW
+F68     CCP_2_HIGH
+F78.6   C2OUT
+F79.6   C1OUT
+FBE     CCP_1
+FBE     CCP_1_LOW
+FBF     CCP_1_HIGH
+FE1-FE2 @READ_PACKED_MEMORY.P1
+FE1-FE2 @WRITE_PACKED_MEMORY.P2
+FE9-FEA @WRITE_PACKED_MEMORY.P1
+FE9-FEA @READ_PACKED_MEMORY.P2
+FE9-FEA @WRITE_PROGRAM_MEMORY.P3
+FE9-FEA @READ_PROGRAM_MEMORY.P4
+FF6-FF8 @READ_PROGRAM_MEMORY.P1
+FF6-FF8 @WRITE_PROGRAM_MEMORY.P2
+
+ROM Allocation:
+0000AE  TIMER1_ISR
+00017A  @delay_ms1
+0001A2  resetDevice
+0001BE  checkBusy
+0001DE  @SPI_XFER_1_8
+0001EE  SetStandby
+000206  WriteCommand
+00024A  setDIO3AsTCXOCtrl
+00026C  SetPacketType
+000282  @DIV3232
+000310  SetRfFrequency
+00042C  SetModulationParams
+000452  SetPacketParams
+00047E  SetPaConfig
+0004A4  SetTxParams
+0004C2  SetBufferBaseAddress
+0004E0  SetupLoRa
+000544  ClearIrqStatus
+000560  SetDioIrqParams
+000594  StartRxContinuous
+0005DE  GetIrqStatus
+00061A  GetRxBufferStatus
+00065E  ReadBuffer
+0006A4  GetPacketRSSI
+0006E8  StartMode30
+00070A  WriteBuffer
+000748  SendAck
+0007F4  StartMode60
+000816  StartInfiniteBlink
+000838  StopAll
+000856  @cinit1
+000856  MAIN
+0008E2  @cinit2
+
+Project Directory:
+    C:\Users\user\Desktop\LORA_SOFT-main\LORA_so-main\RX_lora_soft\lora_soft-main\Lora\
+
+Project Files:
+    main.c                                                  [26-ноя-26 22:19  CRC=0F21C9EF]
+    ..\..\..\..\..\..\..\..\Program Files (x86)\PICC\Devices\18F45K22.h [07-мар-23 18:25  CRC=3E32D25F]
+
+Source signature=8B876EAD
+Program memory checksum=0000
+Hex file CRC=1425
+
+Units:
+    C:\Users\user\Desktop\LORA_SOFT-main\LORA_so-main\RX_lora_soft\lora_soft-main\Lora\main (main)
+
+Compiler Settings:
+    Processor:      PIC18F45K22
+    Pointer Size:   16
+    ADC Range:      0-255
+    Opt Level:      9
+    Short,Int,Long: UNSIGNED: 1,8,16
+    Float,Double:   32,32
+    Compile Mode:   CCS5
+
+Output Files:
+    XREF file:   main.xsym
+    Errors:      main.err
+    Ext Symbols: main.esym
+    INHX32:      main.hex
+    Symbols:     main.sym
+    List:        main.lst
+    Debug/COFF:  main.cof
+    Project:     main.ccspjt
+    Call Tree:   main.tre
+    Statistics:  main.STA

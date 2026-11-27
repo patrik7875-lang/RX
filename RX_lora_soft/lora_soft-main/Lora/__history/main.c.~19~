@@ -1,0 +1,119 @@
+#include <18F45K22.h>
+#device PASS_STRINGS = IN_RAM
+
+// “актирование PIC18F45K22 от внутреннего генератора 16 ћ√ц
+#use delay(internal=16MHz)
+
+// јппаратный SPI1: PIN_C3 (SCK), PIN_C4 (SDI), PIN_C5 (SDO)
+#use spi(MASTER, SPI1, MODE=0, BITS=8, BAUD=1000000, STREAM=SPI_1)
+
+// ѕины управлени€ модулем Ebyte E22-400M30S
+#define NSS_Pin   PIN_C1
+#define NRST_Pin  PIN_C2
+#define BUSY_Pin  PIN_C0
+#define DIO1_Pin  PIN_B0
+#define TXEN      PIN_E1
+#define RXEN      PIN_E2
+
+// —ветодиоды и дополнительные пины
+#define LED1      PIN_A1
+#define LED2      PIN_A2
+#define CHANEL1   PIN_D5
+#define CHANEL2   PIN_D6
+#define S_lora    PIN_D4
+
+// √лобальные параметры LoRa дл€ E22-400M30S
+unsigned int8  packettype      = 0x01;       // LoRa
+unsigned int32 frequency       = 433920000;  // „астота 433.92 ћ√ц (оптимально дл€ E22-400M30S)
+unsigned int8  spreadingFactor = 0x07;       // SF7
+unsigned int8  bandwidth       = 0x04;       // 125 к√ц
+unsigned int8  codeRate        = 0x01;       // CR 4/5
+unsigned int8  optimisation    = 0x00;       // ƒл€ SF7 при 125 к√ц оптимизаци€ не требуетс€
+unsigned int16 preambleLength  = 0x000C;     // 12 символов
+unsigned int8  headerType      = 0x00;       // явный заголовок
+unsigned int8  payloadLength   = 5;          // ƒлина тестового пакета: 5 байт
+unsigned int8  crcType         = 0x01;       // CRC включен
+unsigned int8  invertIQ        = 0x00;       // —тандартный IQ
+
+// Ќастройки усилител€ SX1268 дл€ раскачки внешнего PA в E22-400M30S (итого 30 dBm)
+unsigned int8  paDutyCycle     = 0x04;
+unsigned int8  hpMax           = 0x07;
+unsigned int8  deviceSel       = 0x00;       // SX1268
+unsigned int8  paLut           = 0x01;
+signed int8    txpower         = 22;         // +22 дЅм на выходе чипа -> +30 дЅм на антенне
+signed int8    rampTime        = 0x04;       // 200 мкс
+
+unsigned int8  txBaseAddress   = 0x00;
+unsigned int8  rxBaseAddress   = 0x00;
+unsigned int32 txtimeout       = 1000;       // “аймаут TX (в шагах по 15.625 мкс после сдвига)
+
+// ѕрототипы функций
+void resetDevice(void);
+void checkBusy(void);
+void SetStandby(unsigned int8 StdbyConfig);
+void WriteCommand(unsigned int8 command, unsigned int8 *buffer, unsigned int16 size);
+void WriteBuffer(unsigned int8 *data, unsigned int8 size, unsigned int8 offset);
+void SetPacketType(void);
+void SetRfFrequency(void);
+void SetModulationParams(void);
+void SetPacketParams(void);
+void SetPaConfig(void);
+void SetTxParams(void);
+void setDIO3AsTCXOCtrl(unsigned int8 tcxoVoltage);
+void setDIO2AsRfSwitchCtrl(unsigned int8 enable);
+void SetBufferBaseAddress(void);
+void SetupLoRa(void);
+void SetDioIrqParams(unsigned int16 irqMask, unsigned int16 dio1Mask, unsigned int16 dio2Mask, unsigned int16 dio3Mask);
+void SetTx(void);
+void ClearIrqStatus(unsigned int16 irqMask);
+void Transmit(void);
+
+// јппаратный сброс трансивера
+void resetDevice(void)
+{
+   delay_ms(10);
+   output_low(NRST_Pin);
+   delay_ms(5);
+   output_high(NRST_Pin);
+   delay_ms(25);
+}
+
+// ќжидание готовности чипа по пину BUSY
+void checkBusy(void)
+{
+   unsigned int8 busy_timeout_cnt = 0;
+   while(input(BUSY_Pin))
+   {
+      delay_ms(1);
+      busy_timeout_cnt++;
+      if (busy_timeout_cnt > 20)
+      {
+         busy_timeout_cnt = 0;
+         resetDevice();
+         break;
+      }
+   }
+}
+
+void SetStandby(unsigned int8 StdbyConfig)
+{
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x80);
+   spi_xfer(SPI_1, StdbyConfig);
+   output_high(NSS_Pin);
+}
+
+void WriteCommand(unsigned int8 command, unsigned int8 *buffer, unsigned int16 size)
+{
+   unsigned int16 index;
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, command);
+   for (index = 0; index < size; index++)
+   {
+      spi_xfer(SPI_1, buffer[index]);
+   }
+   output_high(NSS_Pin);
+}
+

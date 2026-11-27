@@ -1,0 +1,425 @@
+
+#include <18F45K22.h>
+#fuses INTRC_IO, NOWDT, NOPROTECT, NOLVP, PUT, BROWNOUT
+#device PASS_STRINGS = IN_RAM
+
+// Тактирование PIC18F45K22 от внутреннего генератора 16 МГц
+#use delay(internal=16MHz)
+
+// Аппаратный SPI1: PIN_C3 (SCK), PIN_C4 (SDI), PIN_C5 (SDO)
+#use spi(MASTER, SPI1, MODE=0, BITS=8, BAUD=1000000, STREAM=SPI_1)
+
+// Пины управления модулем Ebyte E22-400M30S
+#define NSS_Pin      PIN_C1
+#define NRST_Pin     PIN_C2
+#define BUSY_Pin     PIN_C0
+#define DIO1_Pin     PIN_B0
+#define TXEN         PIN_E1
+#define RXEN         PIN_E2
+
+// Светодиоды индикации принятых значений
+#define LED1         PIN_A1   // Загорается при получении 30
+#define LED2         PIN_A2   // Загорается при получении 60
+
+// Адрес этого приемника, длина пакета и байт подтверждения (ACK)
+#define RECEIVER_ID  1
+#define PACKET_LEN   2
+#define ACK_BYTE     0xAA
+
+// Глобальные параметры LoRa (идентичны передатчику)
+unsigned int8  packettype      = 0x01;       // LoRa
+unsigned int32 frequency       = 433920000;  // 433.92 МГц
+unsigned int8  spreadingFactor = 0x07;       // SF7
+unsigned int8  bandwidth       = 0x04;       // 125 кГц
+unsigned int8  codeRate        = 0x01;       // CR 4/5
+unsigned int8  optimisation    = 0x00;       // LowDataRateOptimize выкл
+unsigned int16 preambleLength  = 0x000C;     // 12 символов
+unsigned int8  headerType      = 0x00;       // Явный заголовок
+unsigned int8  crcType         = 0x01;       // CRC включен
+unsigned int8  invertIQ        = 0x00;       // Стандартный IQ
+
+// Параметры усилителя для отправки ACK (безопасные +14 dBm на чипе -> ~29 dBm на выходе модуля)
+unsigned int8  paDutyCycle     = 0x02;
+unsigned int8  hpMax           = 0x02;
+unsigned int8  deviceSel       = 0x00;
+unsigned int8  paLut           = 0x01;
+signed int8    txpower         = 22;
+unsigned int8  rampTime        = 0x04;       // 200 мкс
+
+unsigned int8  txBaseAddress   = 0x00;
+unsigned int8  rxBaseAddress   = 0x00;
+
+// Прототипы функций
+void resetDevice(void);
+void checkBusy(void);
+void SetStandby(unsigned int8 StdbyConfig);
+void WriteCommand(unsigned int8 command, unsigned int8 *buffer, unsigned int16 size);
+void WriteBuffer(unsigned int8 *data, unsigned int8 size, unsigned int8 offset);
+void ReadBuffer(unsigned int8 offset, unsigned int8 *data, unsigned int8 size);
+void SetPacketType(void);
+void SetRfFrequency(void);
+void SetModulationParams(void);
+void SetPacketParams(unsigned int8 len);
+void SetPaConfig(void);
+void SetTxParams(void);
+void setDIO3AsTCXOCtrl(unsigned int8 tcxoVoltage);
+void SetBufferBaseAddress(void);
+void SetupLoRa(void);
+void SetDioIrqParams(unsigned int16 irqMask, unsigned int16 dio1Mask, unsigned int16 dio2Mask, unsigned int16 dio3Mask);
+unsigned int16 GetIrqStatus(void);
+void ClearIrqStatus(unsigned int16 irqMask);
+void GetRxBufferStatus(unsigned int8 *payloadLen, unsigned int8 *rxStartBufferPtr);
+void StartRxContinuous(void);
+void SendAck(void);
+
+// Аппаратный сброс трансивера
+void resetDevice(void)
+{
+   delay_ms(10);
+   output_low(NRST_Pin);
+   delay_ms(5);
+   output_high(NRST_Pin);
+   delay_ms(25);
+}
+
+// Ожидание готовности чипа по пину BUSY
+void checkBusy(void)
+{
+   unsigned int8 busy_timeout_cnt = 0;
+   while (input(BUSY_Pin))
+   {
+      delay_ms(1);
+      busy_timeout_cnt++;
+      if (busy_timeout_cnt > 20)
+      {
+         busy_timeout_cnt = 0;
+         resetDevice();
+         break;
+      }
+   }
+}
+
+void SetStandby(unsigned int8 StdbyConfig)
+{
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x80);
+   spi_xfer(SPI_1, StdbyConfig);
+   output_high(NSS_Pin);
+}
+
+void WriteCommand(unsigned int8 command, unsigned int8 *buffer, unsigned int16 size)
+{
+   unsigned int16 index;
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, command);
+   for (index = 0; index < size; index++)
+   {
+      spi_xfer(SPI_1, *(buffer + index));
+   }
+   output_high(NSS_Pin);
+}
+
+// Запись данных в FIFO буфер перед отправкой ACK (опкод 0x0E)
+void WriteBuffer(unsigned int8 *data, unsigned int8 size, unsigned int8 offset)
+{
+   unsigned int8 index;
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x0E);
+   spi_xfer(SPI_1, offset);
+   for (index = 0; index < size; index++)
+   {
+      spi_xfer(SPI_1, *(data + index));
+   }
+   output_high(NSS_Pin);
+}
+
+// Чтение принятых данных из FIFO буфера SX1268 (опкод 0x1E)
+void ReadBuffer(unsigned int8 offset, unsigned int8 *data, unsigned int8 size)
+{
+   unsigned int8 index;
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x1E);
+   spi_xfer(SPI_1, offset);
+   spi_xfer(SPI_1, 0x00);
+   for (index = 0; index < size; index++)
+   {
+      *(data + index) = spi_xfer(SPI_1, 0x00);
+   }
+   output_high(NSS_Pin);
+}
+
+void SetPacketType(void)
+{
+   WriteCommand(0x8A, &packettype, 1);
+}
+
+// Точный целочисленный расчет частоты (совпадает с передатчиком)
+void SetRfFrequency(void)
+{
+   unsigned int8 buffer[4];
+   unsigned int32 freq = (frequency / 15625UL) * 16384UL + ((frequency % 15625UL) * 16384UL) / 15625UL;
+   *(buffer + 0) = (unsigned int8)(freq >> 24);
+   *(buffer + 1) = (unsigned int8)(freq >> 16);
+   *(buffer + 2) = (unsigned int8)(freq >> 8);
+   *(buffer + 3) = (unsigned int8)(freq);
+   WriteCommand(0x86, buffer, 4);
+}
+void SetModulationParams(void)
+{
+   unsigned int8 buffer[4];
+   *(buffer + 0) = spreadingFactor;
+   *(buffer + 1) = bandwidth;
+   *(buffer + 2) = codeRate;
+   *(buffer + 3) = optimisation;
+   WriteCommand(0x8B, buffer, 4);
+}
+
+void SetPacketParams(unsigned int8 len)
+{
+   unsigned int8 buffer[6];
+   *(buffer + 0) = (unsigned int8)(preambleLength >> 8);
+   *(buffer + 1) = (unsigned int8)(preambleLength);
+   *(buffer + 2) = headerType;
+   *(buffer + 3) = len;
+   *(buffer + 4) = crcType;
+   *(buffer + 5) = invertIQ;
+   WriteCommand(0x8C, buffer, 6);
+}
+
+void SetPaConfig(void)
+{
+   unsigned int8 buffer[4];
+   *(buffer + 0) = paDutyCycle;
+   *(buffer + 1) = hpMax;
+   *(buffer + 2) = deviceSel;
+   *(buffer + 3) = paLut;
+   WriteCommand(0x95, buffer, 4);
+}
+
+void SetTxParams(void)
+{
+   unsigned int8 buffer[2];
+   *(buffer + 0) = (unsigned int8)txpower;
+   *(buffer + 1) = rampTime;
+   WriteCommand(0x8E, buffer, 2);
+}
+
+void setDIO3AsTCXOCtrl(unsigned int8 tcxoVoltage)
+{
+   unsigned int8 buffer[4];
+   *(buffer + 0) = tcxoVoltage;
+   *(buffer + 1) = 0x00;
+   *(buffer + 2) = 0x00;
+   *(buffer + 3) = 0x64;
+   WriteCommand(0x97, buffer, 4);
+}
+
+void SetBufferBaseAddress(void)
+{
+   unsigned int8 buffer[2];
+   *(buffer + 0) = txBaseAddress;
+   *(buffer + 1) = rxBaseAddress;
+   WriteCommand(0x8F, buffer, 2);
+}
+
+// Инициализация и калибровка приемника под 433.92 МГц
+void SetupLoRa(void)
+{
+   unsigned int8 cal_param = 0x7F;
+   unsigned int8 img_freq[2];
+   *(img_freq + 0) = 0x6B; // Калибровка диапазона 430-440 МГц
+   *(img_freq + 1) = 0x6F;
+
+   output_low(TXEN);
+   output_low(RXEN);
+   resetDevice();
+
+   SetStandby(0x00);
+   setDIO3AsTCXOCtrl(0x02);           // Питание TCXO 1.8 В
+   delay_ms(10);
+   WriteCommand(0x89, &cal_param, 1); // Калибровка внутренних блоков
+   checkBusy();
+   WriteCommand(0x98, img_freq, 2);   // Калибровка зеркального канала под 433.92 МГц
+   checkBusy();
+
+   SetPacketType();
+   SetRfFrequency();
+   SetModulationParams();
+   SetPacketParams(PACKET_LEN);
+   SetPaConfig();
+   SetTxParams();
+   SetBufferBaseAddress();
+}
+
+void SetDioIrqParams(unsigned int16 irqMask, unsigned int16 dio1Mask, unsigned int16 dio2Mask, unsigned int16 dio3Mask)
+{
+   unsigned int8 buffer[8];
+   *(buffer + 0) = (unsigned int8)(irqMask >> 8);
+   *(buffer + 1) = (unsigned int8)(irqMask);
+   *(buffer + 2) = (unsigned int8)(dio1Mask >> 8);
+   *(buffer + 3) = (unsigned int8)(dio1Mask);
+   *(buffer + 4) = (unsigned int8)(dio2Mask >> 8);
+   *(buffer + 5) = (unsigned int8)(dio2Mask);
+   *(buffer + 6) = (unsigned int8)(dio3Mask >> 8);
+   *(buffer + 7) = (unsigned int8)(dio3Mask);
+   WriteCommand(0x08, buffer, 8);
+}
+
+// Чтение регистра флагов прерываний (опкод 0x12)
+unsigned int16 GetIrqStatus(void)
+{
+   unsigned int8 msb, lsb;
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x12);
+   spi_xfer(SPI_1, 0x00);
+   msb = spi_xfer(SPI_1, 0x00);
+   lsb = spi_xfer(SPI_1, 0x00);
+   output_high(NSS_Pin);
+   return ((unsigned int16)msb << 8) | lsb;
+}
+
+// Сброс флагов прерываний (опкод 0x02)
+void ClearIrqStatus(unsigned int16 irqMask)
+{
+   unsigned int8 buffer[2];
+   *(buffer + 0) = (unsigned int8)(irqMask >> 8);
+   *(buffer + 1) = (unsigned int8)(irqMask);
+   WriteCommand(0x02, buffer, 2);
+}
+
+// Получение длины принятого пакета и смещения в FIFO (опкод 0x13)
+void GetRxBufferStatus(unsigned int8 *payloadLen, unsigned int8 *rxStartBufferPtr)
+{
+   checkBusy();
+   output_low(NSS_Pin);
+   spi_xfer(SPI_1, 0x13);
+   spi_xfer(SPI_1, 0x00);
+   *payloadLen = spi_xfer(SPI_1, 0x00);
+   *rxStartBufferPtr = spi_xfer(SPI_1, 0x00);
+   output_high(NSS_Pin);
+}
+
+// Перевод E22-400M30S в режим непрерывного приема
+void StartRxContinuous(void)
+{
+   unsigned int8 rx_timeout[3] = {0xFF, 0xFF, 0xFF};
+
+   SetStandby(0x00);
+   ClearIrqStatus(0xFFFF);
+   // Разрешаем RxDone (0x0002), HeaderErr (0x0020), CrcErr (0x0040); на DIO1 выводим RxDone
+   SetDioIrqParams(0x0062, 0x0002, 0x0000, 0x0000);
+
+   // Включаем приемный тракт (LNA)
+   output_low(TXEN);
+   output_high(RXEN);
+   delay_us(100);
+
+   // Команда SetRx (опкод 0x82)
+   WriteCommand(0x82, rx_timeout, 3);
+}
+
+// Отправка пакета подтверждения [RECEIVER_ID, 0xAA] передатчику
+void SendAck(void)
+{
+   unsigned int8 ack_packet[PACKET_LEN];
+   unsigned int8 tx_cmd[3] = {0x01, 0xF4, 0x00}; // Таймаут TX ~2 секунды (128000 * 15.625 мкс)
+   unsigned int16 wait_cnt = 0;
+
+   *(ack_packet + 0) = RECEIVER_ID;
+   *(ack_packet + 1) = ACK_BYTE;
+
+   // Небольшая пауза, чтобы передатчик гарантированно успел переключиться на прием
+   delay_ms(5);
+
+   SetStandby(0x00);
+   SetPacketParams(PACKET_LEN);
+   ClearIrqStatus(0xFFFF);
+   SetDioIrqParams(0x0201, 0x0201, 0x0000, 0x0000); // TxDone | Timeout -> DIO1
+
+   WriteBuffer(ack_packet, PACKET_LEN, 0x00);
+
+   // Переключаем внешний усилитель модуля E22-400M30S на передачу
+   output_low(RXEN);
+   output_high(TXEN);
+   delay_us(100);
+
+   // Запускаем передачу (опкод 0x83)
+   WriteCommand(0x83, tx_cmd, 3);
+
+   // Ждем окончания отправки ACK по DIO1
+   while (!input(DIO1_Pin) && wait_cnt < 1000)
+   {
+      delay_ms(1);
+      wait_cnt++;
+   }
+
+   // Выключаем усилитель передачи и очищаем флаги
+   output_low(TXEN);
+   output_low(RXEN);
+   ClearIrqStatus(0xFFFF);
+}
+
+void main(void)
+{
+   unsigned int8 rxbuffer[PACKET_LEN];
+   unsigned int8 rx_len = 0;
+   unsigned int8 rx_offset = 0;
+   unsigned int16 irq_status = 0;
+
+   setup_adc_ports(NO_ANALOGS);
+
+   output_high(NSS_Pin);
+   output_high(NRST_Pin);
+   output_low(TXEN);
+   output_low(RXEN);
+   output_low(LED1);
+   output_low(LED2);
+
+   SetupLoRa();
+   StartRxContinuous();
+
+   while (TRUE)
+   {
+      if (input(DIO1_Pin))
+      {
+         irq_status = GetIrqStatus();
+         ClearIrqStatus(0xFFFF);
+
+         // Проверяем успешный прием (RxDone = 0x0002) и отсутствие ошибок (0x0060)
+         if ((irq_status & 0x0002) && !(irq_status & 0x0060))
+         {
+            GetRxBufferStatus(&rx_len, &rx_offset);
+
+            if (rx_len >= PACKET_LEN)
+            {
+               ReadBuffer(rx_offset, rxbuffer, PACKET_LEN);
+
+               // Если пакет для нашего приемника (ID = 1)
+               if (*(rxbuffer + 0) == RECEIVER_ID)
+               {
+                  if (*(rxbuffer + 1) == 30)
+                  {
+                     output_high(LED1);
+                     output_low(LED2);
+                     SendAck();            // Отправляем подтверждение [1, 0xAA]
+                     StartRxContinuous();  // Возвращаем модуль в режим приема
+                  }
+                  else if (*(rxbuffer + 1) == 60)
+                  {
+                     output_low(LED1);
+                     output_high(LED2);
+                     SendAck();            // Отправляем подтверждение [1, 0xAA]
+                     StartRxContinuous();  // Возвращаем модуль в режим приема
+                  }
+               }
+            }
+         }
+      }
+   }
+}
+

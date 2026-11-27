@@ -1,0 +1,103 @@
+[PROJECT]
+Target=main.hex
+Processor_Text=PIC18F45K22
+CCSVerions=5.123
+Compiler=PCH
+CCSVersion=5.115
+[Target Data]
+FileList=main.c
+[Directories]
+Include=
+[C:\Users\patri\Desktop\Lora\main]
+Type=4
+[mru-list]
+1=main.c
+
+[fileformats]
+forcecoff=0
+
+[ProjectLog]
+Days=5
+D1=07-11-2026
+D1_L=8
+D1_L1=[5454]Project Opened.
+D1_L2=[5457]Started Editing.
+D1_L3=[5762]Stopped Editing.
+TotalEdit=60
+TotalDebug=0
+D1_E=32
+D1_D=0
+D1_L4=[8695]Project Closed.
+D1_L5=[26024]Project Opened.
+D1_L6=[27496]Started Editing.
+D1_L7=[29603]Stopped Editing.
+D1_L8=[31888]Project Closed.
+D2=23-11-2026
+D2_L=6
+D2_L1=[62011]Project Opened.
+D2_L2=[62021]Started Editing.
+D2_L3=[62320]Stopped Editing.
+D2_L4=[62394]Started Editing.
+D2_L5=[63447]Stopped Editing.
+D2_E=13
+D2_D=0
+D2_L6=[66621]Project Closed.
+D3=24-11-2026
+D3_L=16
+D3_L1=[30367]Project Opened.
+D3_L2=[30424]Started Editing.
+D3_L3=[30803]Stopped Editing.
+D3_E=4
+D3_D=0
+D3_L4=[30896]Project Closed.
+D3_L5=[33301]Project Opened.
+D3_L6=[34250]Project Closed.
+D3_L7=[34684]Project Opened.
+D3_L8=[34701]Started Editing.
+D3_L9=[35002]Stopped Editing.
+D3_L10=[58381]Project Closed.
+D3_L11=[58582]Project Opened.
+D3_L12=[58977]Started Editing.
+D3_L13=[59007]Stopped Editing.
+D3_L14=[59007]Project Closed.
+D3_L15=[59270]Project Opened.
+D3_L16=[61029]Project Closed.
+D4=25-11-2026
+D4_L=8
+D4_L1=[43813]Project Opened.
+D4_L2=[43835]Started Editing.
+D4_L3=[44205]Stopped Editing.
+D4_E=6
+D4_D=0
+D4_L4=[45394]Project Closed.
+D4_L5=[45664]Project Opened.
+D4_L6=[45678]Started Editing.
+D4_L7=[45892]Stopped Editing.
+D4_L8=[45892]Project Closed.
+D5=26-11-2026
+D5_L=8
+D5_L1=[65572]Project Opened.
+D5_L2=[69911]Project Closed.
+D5_L3=[80057]Project Opened.
+D5_L4=[80391]Started Editing.
+D5_L5=[80645]Stopped Editing.
+D5_E=5
+D5_D=0
+D5_L6=[80645]Project Closed.
+D5_L7=[80988]Project Opened.
+D5_L8=[81295]Project Closed.
+
+[Opened Files]
+1=main.c
+t1=718
+Count=1
+2=main.h
+t2=1
+[main.c]
+Type=4
+
+[defines]
+buildcount=34
+[Units]
+Count=1
+1=main (main)
